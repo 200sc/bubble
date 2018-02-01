@@ -5,6 +5,11 @@ import (
 	"image/color"
 	"math"
 
+	"github.com/200sc/go-dist/floatrange"
+	"github.com/200sc/go-dist/intrange"
+	"github.com/oakmound/oak/render/particle"
+	"github.com/oakmound/oak/shape"
+
 	"github.com/oakmound/oak"
 	"github.com/oakmound/oak/alg/floatgeom"
 	"github.com/oakmound/oak/collision"
@@ -19,6 +24,41 @@ import (
 func addMainScene() {
 	oak.Add("bubble", func(string, interface{}) {
 
+		snow := particle.And(
+			particle.Angle(floatrange.NewLinear(-20, 20)),
+			particle.Layer(func(physics.Vector) int { return 2 }),
+			particle.Pos(330, 120),
+			particle.Spread(10, 130),
+			particle.Size(intrange.NewLinear(1, 3)),
+			particle.Color(
+				color.RGBA{240, 240, 240, 255},
+				color.RGBA{15, 15, 15, 0},
+				color.RGBA{240, 240, 240, 255},
+				color.RGBA{15, 15, 15, 0},
+			),
+			particle.Duration(particle.Inf),
+			particle.LifeSpan(floatrange.NewLinear(100, 101)),
+			particle.Speed(floatrange.NewLinear(3, 8)),
+			particle.NewPerFrame(floatrange.NewLinear(2, 10)),
+			particle.Shape(shape.Square),
+		)
+
+		backSnow := particle.And(
+			snow,
+			particle.Layer(func(physics.Vector) int { return 0 }),
+			particle.Color(
+				color.RGBA{140, 140, 140, 255},
+				color.RGBA{15, 15, 15, 0},
+				color.RGBA{140, 140, 140, 255},
+				color.RGBA{15, 15, 15, 0},
+			),
+			particle.Speed(floatrange.NewLinear(2, 5)),
+			particle.NewPerFrame(floatrange.NewLinear(1, 5)),
+		)
+
+		particle.NewColorGenerator(snow).Generate(0)
+		particle.NewColorGenerator(backSnow).Generate(0)
+
 		oak.Background = image.NewUniform(color.RGBA{100, 100, 229, 255})
 
 		char := entities.NewMoving(100, 100, 10, 12,
@@ -27,9 +67,21 @@ func addMainScene() {
 
 		render.Draw(char.R, 0, 1)
 
-		char.Speed = physics.NewVector(.76, 4)
+		char.Speed = physics.NewVector(.8, 4)
 
 		fallSpeed := .1
+
+		thdsPos := physics.NewVector(0, 0).Attach(char.Point.Vector, 5)
+
+		thds := NewThreads(
+			color.RGBA{255, 0, 0, 255},
+			20,
+			char.Delta,
+			thdsPos,
+			2,
+		)
+
+		render.Draw(thds, 0)
 
 		char.Bind(func(id int, nothing interface{}) int {
 			char := event.GetEntity(id).(*entities.Moving)
@@ -118,7 +170,7 @@ func addMainScene() {
 				}
 			} else if char.Delta.X() > 0 {
 				if math.Abs(char.Delta.Y()) < .2 {
-					if char.Delta.X() > 1.5 {
+					if char.Delta.X() > 1.4 {
 						sw.Set("rightRun")
 					} else {
 						sw.Set("rightWalk")

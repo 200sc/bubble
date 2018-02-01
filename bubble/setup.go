@@ -25,7 +25,7 @@ func addSetupScene() {
 		bodies = render.GetSheet(filepath.Join("10x7", "bodies.png"))
 		heads = render.GetSheet(filepath.Join("10x7", "heads.png"))
 
-		walk := render.NewSequence(24,
+		walk := render.NewSequence(18,
 			shoes[0][0].Copy(),
 			shoes[1][0].Copy(),
 			shoes[1][1].Copy(),
