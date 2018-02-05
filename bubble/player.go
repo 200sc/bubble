@@ -28,6 +28,7 @@ type Player struct {
 	State
 	Facing
 	hasTarget bool
+	Target    floatgeom.Point2
 }
 
 func (p *Player) Init() event.CID {
@@ -42,7 +43,7 @@ func NewPlayer() *Player {
 
 	render.Draw(p.R, 0, 1)
 
-	p.Speed = physics.NewVector(.1, 4)
+	p.Speed = physics.NewVector(.15, 4)
 	p.MaxSpeed = floatgeom.Point2{4, 15}
 	p.fallspeed = .1
 
@@ -84,16 +85,35 @@ func NewPlayer() *Player {
 				p.Delta.SetX(p.Delta.X() * .8)
 			}
 
-			if p.State == Grounded {
-				p.Delta.SetX(p.Delta.X() * .95)
-				if math.Abs(p.Delta.X()) < .05 {
-					p.Delta.SetX(0)
+			if math.Abs(p.Delta.X()) > p.MaxSpeed.X() {
+				if p.Delta.X() < 0 {
+					p.Delta.SetX(-p.MaxSpeed.X())
+				} else {
+					p.Delta.SetX(p.MaxSpeed.X())
 				}
 			}
-			if math.Abs(p.Delta.X()) > p.MaxSpeed.X() {
-				p.Delta.SetX(p.MaxSpeed.X())
+		}
+		if p.State == Swinging {
+			pos := floatgeom.Point2{p.X(), p.Y()}
+			angle := pos.RadiansTo(p.Target)
+			accel := math.Cos(angle) * p.fallspeed
+			dir := angle + math.Pi/4
+			dirAccel := floatgeom.RadianPoint(dir).MulConst(accel)
+			fmt.Println(accel, angle, dir, dirAccel)
+			p.Delta.ShiftX(dirAccel.X())
+			p.Delta.ShiftY(dirAccel.Y())
+			if oak.IsDown(key.Spacebar) {
+				p.State = InAir
+				// push off?
 			}
 		}
+		if p.State == Grounded || p.State == Swinging {
+			p.Delta.SetX(p.Delta.X() * .95)
+			if math.Abs(p.Delta.X()) < .05 {
+				p.Delta.SetX(0)
+			}
+		}
+
 		// Jump with Space
 		if p.CanJump() {
 			if oak.IsDown(key.Spacebar) {
@@ -117,11 +137,13 @@ func NewPlayer() *Player {
 			p.State = Grounded
 			aboveGround = true
 		} else {
-			if hit == nil && math.Abs(p.Delta.Y()) > 0 {
+			if hit == nil && math.Abs(p.Delta.Y()) > 0 && p.State != Swinging {
 				p.State = InAir
 			}
 			// Fall if there's no ground
-			p.Delta.ShiftY(p.fallspeed)
+			if p.State != Swinging {
+				p.Delta.ShiftY(p.fallspeed)
+			}
 		}
 
 		if hit != nil {
@@ -175,6 +197,11 @@ func NewPlayer() *Player {
 			p.Threads.BaseTargets[5] = p.Threads.Points[2].Add(floatgeom.Point2{-3, 3})
 			p.Threads.BaseTargets[4] = p.Threads.Points[3].Add(floatgeom.Point2{0, 1})
 		}
+
+		// remove this
+		if p.Y() > float64(oak.ScreenHeight) {
+			p.Moving.ShiftY(float64(-oak.ScreenHeight))
+		}
 		return 0
 	}, event.Enter)
 
@@ -201,7 +228,11 @@ func NewPlayer() *Player {
 
 	p.Bind(func(id int, hit interface{}) int {
 		if p.hasTarget {
+			cp := hit.(*collision.Space)
 			fmt.Println("Threads hit", hit)
+			x, y := cp.GetCenter()
+			p.Target = floatgeom.Point2{x, y}
+			p.State = Swinging
 		}
 		return 0
 	}, "SwingHit")
