@@ -53,7 +53,7 @@ func NewPlayer() *Player {
 	)
 	
 	p.Threads.StaticPoints = 4
-	render.Draw(p.Threads, 0)
+	render.Draw(p.Threads, 0, 3)
 
 	p.Bind(func(id int, nothing interface{}) int {
 		p := event.GetEntity(id).(*Player)
