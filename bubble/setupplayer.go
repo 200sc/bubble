@@ -22,7 +22,7 @@ func SetupPlayer() {
 	bodiesS, _ := render.GetSheet(filepath.Join("10x7", "bodies.png"))
 	headsS, _ := render.GetSheet(filepath.Join("10x7", "heads.png"))
 
-	eyes = eyesS.ToSprites() 
+	eyes = eyesS.ToSprites()
 	shoes = shoesS.ToSprites()
 	heads = headsS.ToSprites()
 	bodies = bodiesS.ToSprites()

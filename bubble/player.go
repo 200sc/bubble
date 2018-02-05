@@ -1,16 +1,18 @@
 package bubble
 
 import (
+	"fmt"
+
+	"github.com/oakmound/oak"
+	"github.com/oakmound/oak/alg/floatgeom"
+	"github.com/oakmound/oak/collision"
 	"github.com/oakmound/oak/entities"
 	"github.com/oakmound/oak/event"
 	"github.com/oakmound/oak/key"
-	"github.com/oakmound/oak/collision"
-	"github.com/oakmound/oak/render"
-	"github.com/oakmound/oak/physics"
 	"github.com/oakmound/oak/mouse"
+	"github.com/oakmound/oak/physics"
+	"github.com/oakmound/oak/render"
 	"github.com/oakmound/oak/timing"
-	"github.com/oakmound/oak/alg/floatgeom"
-	"github.com/oakmound/oak"
 
 	"image/color"
 	"math"
@@ -22,6 +24,10 @@ type Player struct {
 	*entities.Moving
 	*Threads
 	fallspeed float64
+	MaxSpeed  floatgeom.Point2
+	State
+	Facing
+	hasTarget bool
 }
 
 func (p *Player) Init() event.CID {
@@ -32,26 +38,27 @@ func NewPlayer() *Player {
 	p := new(Player)
 	p.Moving = entities.NewMoving(100, 100, 10, 12,
 		charR,
-		nil, p.Init(), 0) 
+		nil, p.Init(), 0)
 
 	render.Draw(p.R, 0, 1)
 
-	p.Speed = physics.NewVector(.8, 4)
-
+	p.Speed = physics.NewVector(.1, 4)
+	p.MaxSpeed = floatgeom.Point2{4, 15}
 	p.fallspeed = .1
 
 	thdsPos := physics.NewVector(0, 0).Attach(p.Point.Vector, 5)
 
 	p.Threads = NewThreads(
 		//color.RGBA{255, 127, 237, 255},
-		color.RGBA{191,95, 178, 191},
-		8,
+		color.RGBA{191, 95, 178, 191},
+		9,
 		p.Delta,
 		thdsPos,
 		2,
 		3,
 	)
-	
+	p.Threads.Swinger = p.CID
+
 	p.Threads.StaticPoints = 4
 	render.Draw(p.Threads, 0, 3)
 
@@ -59,15 +66,39 @@ func NewPlayer() *Player {
 		p := event.GetEntity(id).(*Player)
 
 		// Move left and right with A and D
-		if oak.IsDown(key.A) {
-			p.Delta.SetX(-p.Speed.X())
-		} else if oak.IsDown(key.D) {
-			p.Delta.SetX(p.Speed.X())
-		} else {
-			p.Delta.SetX(0)
+		speed := p.Speed
+		if p.CanWalk() {
+			if p.State == Grounded {
+				if oak.IsDown(key.LeftShift) || oak.IsDown(key.RightShift) {
+					speed = p.Speed.Copy().Scale(2)
+				}
+			} else if p.State == InAir {
+				speed = p.Speed.Copy().Scale(.7)
+			}
+
+			if oak.IsDown(key.A) {
+				p.Delta.ShiftX(-speed.X())
+			} else if oak.IsDown(key.D) {
+				p.Delta.ShiftX(speed.X())
+			} else {
+				p.Delta.SetX(p.Delta.X() * .8)
+			}
+
+			if p.State == Grounded {
+				p.Delta.SetX(p.Delta.X() * .95)
+				if math.Abs(p.Delta.X()) < .05 {
+					p.Delta.SetX(0)
+				}
+			}
+			if math.Abs(p.Delta.X()) > p.MaxSpeed.X() {
+				p.Delta.SetX(p.MaxSpeed.X())
+			}
 		}
-		if oak.IsDown(key.LeftShift) || oak.IsDown(key.RightShift) {
-			p.Delta.SetX(p.Delta.X() * 2)
+		// Jump with Space
+		if p.CanJump() {
+			if oak.IsDown(key.Spacebar) {
+				p.Delta.ShiftY(-p.Speed.Y())
+			}
 		}
 		oldX, oldY := p.GetPos()
 		p.ShiftPos(p.Delta.X(), p.Delta.Y())
@@ -83,12 +114,12 @@ func NewPlayer() *Player {
 			p.SetY(hit.Y() - p.H)
 			// Stop falling
 			p.Delta.SetY(0)
-			// Jump with Space when on the ground
-			if oak.IsDown(key.Spacebar) {
-				p.Delta.ShiftY(-p.Speed.Y())
-			}
+			p.State = Grounded
 			aboveGround = true
 		} else {
+			if hit == nil && math.Abs(p.Delta.Y()) > 0 {
+				p.State = InAir
+			}
 			// Fall if there's no ground
 			p.Delta.ShiftY(p.fallspeed)
 		}
@@ -127,44 +158,61 @@ func NewPlayer() *Player {
 
 		p.UpdateAnim()
 
-		 
-		p.Threads.Points[0] =	floatgeom.Point2{p.Moving.X(), p.Moving.Y()}
-		p.Threads.Points[1] =	floatgeom.Point2{p.Moving.X(), p.Moving.Y()+1}
-		p.Threads.Points[2] =	floatgeom.Point2{p.Moving.X()+9, p.Moving.Y()+1}
-		p.Threads.Points[3] =	floatgeom.Point2{p.Moving.X()+9, p.Moving.Y()}
-		p.Threads.BaseTargets[7] = p.Threads.Points[0].Add(floatgeom.Point2{0,5})
-		p.Threads.BaseTargets[6] = p.Threads.Points[1].Add(floatgeom.Point2{0,6})
-		p.Threads.BaseTargets[5] = p.Threads.Points[2].Add(floatgeom.Point2{0,8})
-		p.Threads.BaseTargets[4] = p.Threads.Points[3].Add(floatgeom.Point2{0,5})
-
+		p.Threads.Points[0] = floatgeom.Point2{p.Moving.X(), p.Moving.Y()}
+		p.Threads.Points[1] = floatgeom.Point2{p.Moving.X(), p.Moving.Y() + 1}
+		p.Threads.Points[2] = floatgeom.Point2{p.Moving.X() + 9, p.Moving.Y() + 1}
+		p.Threads.Points[3] = floatgeom.Point2{p.Moving.X() + 9, p.Moving.Y()}
+		if p.Facing == Left {
+			p.Threads.BaseTargets[8] = p.Threads.Points[0].Add(floatgeom.Point2{0, 1})
+			p.Threads.BaseTargets[7] = p.Threads.Points[1].Add(floatgeom.Point2{3, 3})
+			p.Threads.BaseTargets[6] = p.Threads.Points[2].Add(floatgeom.Point2{-3, 5})
+			p.Threads.BaseTargets[5] = p.Threads.Points[3].Add(floatgeom.Point2{0, 8})
+			p.Threads.BaseTargets[4] = p.Threads.Points[3].Add(floatgeom.Point2{2, 12})
+		} else {
+			p.Threads.BaseTargets[8] = p.Threads.Points[0].Add(floatgeom.Point2{-2, 12})
+			p.Threads.BaseTargets[7] = p.Threads.Points[0].Add(floatgeom.Point2{0, 8})
+			p.Threads.BaseTargets[6] = p.Threads.Points[1].Add(floatgeom.Point2{3, 5})
+			p.Threads.BaseTargets[5] = p.Threads.Points[2].Add(floatgeom.Point2{-3, 3})
+			p.Threads.BaseTargets[4] = p.Threads.Points[3].Add(floatgeom.Point2{0, 1})
+		}
 		return 0
 	}, event.Enter)
 
-	hasTarget := false
 	targetLock := sync.Mutex{}
-	event.GlobalBind(func(_ int, me interface{}) int {
-		mevent := me.(mouse.Event)
-		targetLock.Lock()
-		defer targetLock.Unlock()			
-		if hasTarget {
-			return 0
+	p.Bind(func(id int, me interface{}) int {
+		p := event.CID(id).E().(*Player)
+		if p.CanSwing() {
+			fmt.Println("p can swing", p.State)
+			mevent := me.(mouse.Event)
+			targetLock.Lock()
+			defer targetLock.Unlock()
+			if p.hasTarget {
+				return 0
+			}
+			p.Threads.SetTargets(floatgeom.Point2{mevent.X(), mevent.Y()})
+			p.hasTarget = true
+			go timing.DoAfter(600*time.Millisecond, func() {
+				p.Threads.ResetTargets()
+				p.hasTarget = false
+			})
 		}
-		p.Threads.SetTargets(floatgeom.Point2{mevent.X(), mevent.Y()})
-		hasTarget = true
-		timing.DoAfter(600 * time.Millisecond, func(){
-			p.Threads.ResetTargets()
-			hasTarget = false
-		})
 		return 0
 	}, mouse.Press)
 
-	
+	p.Bind(func(id int, hit interface{}) int {
+		if p.hasTarget {
+			fmt.Println("Threads hit", hit)
+		}
+		return 0
+	}, "SwingHit")
+
 	return p
 }
 
 func (p *Player) UpdateAnim() {
 	sw := p.R.(*render.Switch)
 	if p.Delta.X() < 0 {
+		p.Facing = Left
 		if math.Abs(p.Delta.Y()) < .2 {
 			if p.Delta.X() < -1.5 {
 				sw.Set("leftRun")
@@ -179,13 +227,13 @@ func (p *Player) UpdateAnim() {
 			}
 		}
 	} else if p.Delta.X() > 0 {
+		p.Facing = Right
 		if math.Abs(p.Delta.Y()) < .2 {
 			if p.Delta.X() > 1.4 {
 				sw.Set("rightRun")
 			} else {
 				sw.Set("rightWalk")
 			}
-			sw.Set("rightWalk")
 		} else {
 			if p.Delta.Y() > 0 {
 				sw.Set("rightJumpDown")
@@ -194,8 +242,7 @@ func (p *Player) UpdateAnim() {
 			}
 		}
 	} else {
-		cur := sw.Get()
-		if cur[0] == 'l' {
+		if p.Facing == Left {
 			if math.Abs(p.Delta.Y()) < .2 {
 				sw.Set("leftStand")
 			} else if p.Delta.Y() > 0 {

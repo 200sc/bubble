@@ -11,7 +11,7 @@ import (
 	"github.com/oakmound/oak/entities"
 	"github.com/oakmound/oak/render"
 	"github.com/oakmound/oak/scene"
-) 
+)
 
 func addMainScene() {
 	oak.Add("bubble", func(string, interface{}) {
@@ -21,7 +21,7 @@ func addMainScene() {
 
 		oak.Background = image.NewUniform(color.RGBA{100, 100, 229, 255})
 
-		NewPlayer() 
+		NewPlayer()
 
 		platforms := []floatgeom.Rect2{
 			floatgeom.NewRect2WH(0, 200, 150, 10),
@@ -36,6 +36,19 @@ func addMainScene() {
 			ground.UpdateLabel(Ground)
 
 			render.Draw(ground.R, 0, 1)
+		}
+
+		hooks := []floatgeom.Rect2{
+			floatgeom.NewRect2WH(150, 100, 10, 10),
+		}
+
+		for _, p := range hooks {
+			hook := entities.NewSolid(p.Min.X(), p.Min.Y(), p.W(), p.H(),
+				render.NewColorBox(int(p.W()), int(p.H()), color.RGBA{100, 180, 100, 255}),
+				nil, 0)
+			hook.UpdateLabel(Swing)
+
+			render.Draw(hook.R, 0, 1)
 		}
 
 	}, func() bool {
