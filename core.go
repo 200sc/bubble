@@ -13,7 +13,7 @@ func main() {
 	oak.SetupConfig.Screen.Scale = 2
 	oak.SetupConfig.Screen.Height = 240
 	oak.SetupConfig.Screen.Width = 320
-	oak.SetupConfig.DrawFrameRate = 120
+	oak.SetupConfig.DrawFrameRate = 60
 
 	render.SetDrawStack(
 		render.NewHeap(false),
