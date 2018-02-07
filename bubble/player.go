@@ -27,8 +27,9 @@ type Player struct {
 	MaxSpeed  floatgeom.Point2
 	State
 	Facing
-	hasTarget bool
-	Target    floatgeom.Point2
+	hasTarget  bool
+	Target     floatgeom.Point2
+	SwingAccel floatgeom.Point2
 }
 
 func (p *Player) Init() event.CID {
@@ -84,24 +85,43 @@ func NewPlayer() *Player {
 			} else {
 				p.Delta.SetX(p.Delta.X() * .8)
 			}
-
-			if math.Abs(p.Delta.X()) > p.MaxSpeed.X() {
-				if p.Delta.X() < 0 {
-					p.Delta.SetX(-p.MaxSpeed.X())
-				} else {
-					p.Delta.SetX(p.MaxSpeed.X())
-				}
-			}
 		}
 		if p.State == Swinging {
 			pos := floatgeom.Point2{p.X(), p.Y()}
+			magn := pos.Sub(p.Target).Magnitude()
 			angle := pos.RadiansTo(p.Target)
-			accel := math.Cos(angle) * p.fallspeed
-			dir := angle + math.Pi/4
-			dirAccel := floatgeom.RadianPoint(dir).MulConst(accel)
-			fmt.Println(accel, angle, dir, dirAccel)
-			p.Delta.ShiftX(dirAccel.X())
-			p.Delta.ShiftY(dirAccel.Y())
+			for angle > math.Pi*2 {
+				angle -= math.Pi * 2
+			}
+			c := math.Cos(angle) * -1
+			s := math.Sin(angle)
+			p.SwingAccel = p.SwingAccel.Add(floatgeom.Point2{c, s})
+			fmt.Println(magn, angle, p.SwingAccel)
+
+			p.Delta.ShiftX(p.SwingAccel.X() * p.fallspeed * p.fallspeed)
+			p.Delta.ShiftY(p.SwingAccel.Y() * p.fallspeed * p.fallspeed)
+
+			dMgn := p.Delta.Magnitude()
+			circum := magn * math.Pi * 2
+			arcPercentage := dMgn / circum
+			arcAngle := arcPercentage * 2 * math.Pi
+			if c > 0 {
+				arcAngle *= -1
+			}
+			goalAngle := angle + arcAngle
+			goalPos := p.Target.Add(floatgeom.RadianPoint(goalAngle).MulConst(magn))
+			p.Delta.SetX(goalPos.X() - p.X())
+			p.Delta.SetY(goalPos.Y() - p.Y())
+
+			// correct delta to move dMgn but end up on circle somewhere
+			//
+			//   T
+			//
+			//        C
+			//
+			//
+			//
+
 			if oak.IsDown(key.Spacebar) {
 				p.State = InAir
 				// push off?
@@ -111,6 +131,14 @@ func NewPlayer() *Player {
 			p.Delta.SetX(p.Delta.X() * .95)
 			if math.Abs(p.Delta.X()) < .05 {
 				p.Delta.SetX(0)
+			}
+		}
+
+		if math.Abs(p.Delta.X()) > p.MaxSpeed.X() {
+			if p.Delta.X() < 0 {
+				p.Delta.SetX(-p.MaxSpeed.X())
+			} else {
+				p.Delta.SetX(p.MaxSpeed.X())
 			}
 		}
 
